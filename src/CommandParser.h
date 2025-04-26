@@ -224,6 +224,7 @@ std::string longestCommonPrefix(const std::vector<std::string>& strs) {
     return prefix;
 }
 
+
 inline void handle_commandline(void* command_parser) {
     auto* parser = static_cast<CommandParser *>(command_parser);
     std::string cmd;
