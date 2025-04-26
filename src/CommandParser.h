@@ -111,7 +111,11 @@ public:
         for (char type : argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
-        commandDefinitions.emplace_back(name, argTypes, callback, description);
+        std::string new_name;
+        for (auto& c: name) {
+            new_name += tolower(c);
+        }
+        commandDefinitions.emplace_back(new_name, argTypes, callback, description);
         return true;
     }
 
@@ -158,6 +162,9 @@ public:
                     }
                     arg = Argument(value);
                     command.erase(0, bytesRead);
+                    if (command.size() > 0) {
+                        command.erase(0, 1);
+                    }
                     break;
                 }
                 case 'i': {
@@ -169,6 +176,9 @@ public:
                     }
                     arg = Argument(value);
                     command.erase(0, bytesRead);
+                    if (command.size() > 0) {
+                        command.erase(0, 1);
+                    }
                     break;
                 }
                 case 's': {
