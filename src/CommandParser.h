@@ -12,6 +12,7 @@
 #include <functional>
 #include <cctype>
 #include <cstdio>
+#include <algorithm>
 
 #define MAX_RESPONSE_SIZE 128
 
@@ -75,16 +76,17 @@ public:
         const std::string& asString() const { return std::get<std::string>(value); }
     };
 
-private:
     struct Command {
         std::string name;
         std::string argTypes;
         std::function<std::string(std::vector<Argument>)> callback;
+        std::string description;
 
-        Command(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback)
-            : name(name), argTypes(argTypes), callback(callback) {}
+        Command(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback, std::string description)
+            : name(name), argTypes(argTypes), callback(callback),description(description) {}
     };
 
+private:
     std::vector<Argument> commandArgs;
     std::vector<Command> commandDefinitions;
 
@@ -105,21 +107,25 @@ private:
     }
 
 public:
-    bool registerCommand(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback) {
+    bool registerCommand(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback, std::string description="") {
         for (char type : argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
-        commandDefinitions.emplace_back(name, argTypes, callback);
+        commandDefinitions.emplace_back(name, argTypes, callback, description);
         return true;
     }
 
     bool processCommand(const std::string& commandStr, std::string& response) {
         std::string command = commandStr;
+        command.erase(command.find_last_not_of(" \n\r\t")+1);
         std::string name = command.substr(0, command.find(' '));
         command.erase(0, command.find(' ') + 1);
 
         auto it = std::find_if(commandDefinitions.begin(), commandDefinitions.end(),
-                               [&name](const Command& cmd) { return cmd.name == name; });
+                               [&name](const Command& cmd) {
+                                   return cmd.name == name;
+                               });
+
 
         if (it == commandDefinitions.end()) {
             response = "Error: Unknown command.";
@@ -183,6 +189,92 @@ public:
         response = it->callback(commandArgs);
         return true;
     }
+
+    [[nodiscard]] std::vector<Command> command_definitions() const {
+        return commandDefinitions;
+    }
 };
+
+inline void clearline() {
+    Serial.print("\r");
+    std::string str(100, ' ');
+    Serial.print(str.c_str());
+    Serial.print("\r");
+
+}
+
+//source chatgpt
+std::string longestCommonPrefix(const std::vector<std::string>& strs) {
+    if (strs.empty()) return "";
+
+    // Start by assuming the whole first string is the prefix
+    std::string prefix = strs[0];
+
+    for (size_t i = 1; i < strs.size(); ++i) {
+        // Compare prefix with each string
+        size_t j = 0;
+        while (j < prefix.size() && j < strs[i].size() && prefix[j] == strs[i][j]) {
+            ++j;
+        }
+        prefix = prefix.substr(0, j);
+
+        if (prefix.empty()) break; // early exit if no common prefix
+    }
+
+    return prefix;
+}
+
+inline void handle_commandline(void* command_parser) {
+    auto* parser = static_cast<CommandParser *>(command_parser);
+    std::string cmd;
+    std::string response;
+
+    while (true) {
+        while (Serial.available()) {
+            char c = Serial.read();
+            if (c == 8) {
+                if (!cmd.empty())
+                    cmd.pop_back();
+                clearline();
+                Serial.print(cmd.c_str());
+            }else if (c == 9) {
+                std::vector<CommandParser::Command> args;
+                std::vector<std::string> argsStrings;
+                for (auto& cmd_data : parser->command_definitions()) {
+                    if ( cmd_data.name.rfind(cmd, 0) == 0) {
+                        args.push_back(cmd_data);
+                        argsStrings.push_back(cmd_data.name);
+                    }
+                }
+                if (args.empty()) {
+
+                }else {
+                    if (args.size() == 1) {
+                        clearline();
+                        cmd = args.front().name;
+                        Serial.print(cmd.c_str());
+                    }else {
+                        Serial.println();
+                        for (CommandParser::Command& cmd : args) {
+                            Serial.println((cmd.name + ": " + (cmd.description.empty() ? "No description found" : cmd.description)).c_str());
+                        }
+                        cmd = longestCommonPrefix(argsStrings);
+                        Serial.print(cmd.c_str());
+                    }
+                }
+            }else {
+                cmd+=c;
+                Serial.write(c);
+            }
+
+
+            if (c=='\n') {
+                parser->processCommand(cmd, response);
+                cmd = "";
+                Serial.println(response.c_str());
+            }
+        }
+    }
+}
 
 #endif
