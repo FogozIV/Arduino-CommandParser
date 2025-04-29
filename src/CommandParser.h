@@ -206,10 +206,12 @@ public:
 };
 
 inline void clearline() {
+    /*
     Serial.print("\r");
     std::string str(100, ' ');
     Serial.print(str.c_str());
-    Serial.print("\r");
+    Serial.print("\r");*/
+    Serial.println();
 
 }
 
@@ -234,20 +236,126 @@ std::string longestCommonPrefix(const std::vector<std::string>& strs) {
     return prefix;
 }
 
+class RoundArray {
+    std::vector<std::string> strs;
+    int index = 0;
+    int lookingIndex = 0;
+    int max_size;
+public:
+    RoundArray(int max_size=10) : strs(max_size, ""), max_size(max_size) {
+
+    }
+
+    void add(const std::string& str) {
+        std::string cmd = str;
+        cmd.erase(cmd.find_last_not_of(" \n\r\t")+1);
+        if (strs[(index+max_size-1)%max_size] == cmd) {
+            return;
+        }
+        strs[index] = cmd;
+        index = (index + 1) % max_size;
+        lookingIndex = index;
+    }
+
+    const std::string& go_up() {
+        lookingIndex = (lookingIndex+max_size - 1) % max_size;
+        if (strs[lookingIndex] == "") {
+            lookingIndex = (lookingIndex+max_size +1) % max_size;
+        }
+        return strs[lookingIndex];
+    }
+
+    const std::string& go_down() {
+        lookingIndex = (lookingIndex+max_size + 1) % max_size;
+        if (strs[lookingIndex] == "") {
+            lookingIndex = (lookingIndex+max_size -1) % max_size;
+        }
+        return strs[lookingIndex];
+    }
+
+};
+
+class StateMachine {
+    bool started = false;
+    std::vector<uint8_t> chars;
+    std::string& command;
+    RoundArray& array;
+
+    void setCommand(const std::string& a) {
+        chars.clear();
+        started = false;;
+        if (a!="") {
+            clearline();
+            this->command=a;
+            Serial.print(a.c_str());
+        }
+    }
+
+public:
+    StateMachine(std::string& command, RoundArray& array): command(command), array(array) {
+
+    }
+    void begin() {
+        started = true;
+    }
+
+    bool isStarted() {
+        return started;
+    }
+
+    std::vector<uint8_t> append(char c) {
+        if (chars.empty() && c==91) {
+            chars.push_back(c);
+            return {};
+        }
+        if (chars.size() == 1 && chars[0] == 91) {
+            if (c == 65) {
+                setCommand(array.go_up());
+                return {};
+            }
+            if (c==66) {
+                setCommand(array.go_down());
+                return {};
+            }
+
+        }
+        std::vector<uint8_t> result = chars;
+        chars.clear();
+        started = false;
+        return result;
+
+    }
+};
 
 inline void handle_commandline(void* command_parser) {
     auto* parser = static_cast<CommandParser *>(command_parser);
     std::string cmd;
     std::string response;
+    RoundArray array;
+    StateMachine stateMachine(cmd, array);
+
 
     while (true) {
         while (Serial.available()) {
             char c = Serial.read();
+            if (c == 27) {
+                stateMachine.begin();
+                continue;
+            }
+            if (stateMachine.isStarted()) {
+                auto result = stateMachine.append(c);
+                if (result.empty())
+                    continue;
+                for (auto a : result) {
+                    Serial.print((char)a);
+                }
+            }
             if (c == 8) {
-                if (!cmd.empty())
+                if (!cmd.empty()) {
                     cmd.pop_back();
-                clearline();
-                Serial.print(cmd.c_str());
+                    clearline();
+                    Serial.print(cmd.c_str());
+                }
             }else if (c == 9) {
                 std::vector<CommandParser::Command> args;
                 std::vector<std::string> argsStrings;
@@ -277,10 +385,10 @@ inline void handle_commandline(void* command_parser) {
                 cmd+=c;
                 Serial.write(c);
             }
-
-
             if (c=='\n') {
                 parser->processCommand(cmd, response);
+                cmd.erase(cmd.end()-1);
+                array.add(cmd);
                 cmd = "";
                 Serial.println(response.c_str());
             }
