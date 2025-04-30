@@ -18,6 +18,14 @@
 
 #define MAX_RESPONSE_SIZE 128
 
+#define TERMINAL_END_LINE_WITH_LINE_FEED 1
+#define TERMINAL_END_LINE_WITH_CARRIAGE_RETURN 2
+#define TERMINAL_END_LINE_WITH_BOTH 3
+struct TerminalIdentifier{
+    uint8_t type = 0;
+    bool identified = false;
+    bool identifying = false;
+} identifier;
 // Template to convert strings to integers with error handling
 // Supports both signed and unsigned integers
 template<typename T>
@@ -228,12 +236,14 @@ public:
 };
 
 inline void clearline() {
-    /*
-    Serial.print("\r");
-    std::string str(100, ' ');
-    Serial.print(str.c_str());
-    Serial.print("\r");*/
-    Serial.println();
+    if(identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN || identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
+        Serial.print("\r");
+        std::string str(40, ' ');
+        Serial.print(str.c_str());
+        Serial.print("\r");
+    }else{
+        Serial.println();
+    }
 
 }
 
@@ -267,12 +277,13 @@ void setCommand(std::string& cmd, const std::string &a) {
     }
 }
 
-inline void handle_commandline(void *command_parser) {
+[[noreturn]] inline void handle_commandline(void *command_parser) {
     auto *parser = static_cast<CommandParser *>(command_parser);
     std::string cmd;
     std::string response;
     RoundArray array;
     StateMachine stateMachine;
+    TerminalIdentifier id;
 
 
 
@@ -331,12 +342,41 @@ inline void handle_commandline(void *command_parser) {
                     }
                 }
             } else {
+
+                if(identifier.identifying){
+                    if(c == '\n') {
+                        identifier.type = TERMINAL_END_LINE_WITH_BOTH;
+                        identifier.identifying = false;
+                        identifier.identified = true;
+                        continue;
+                    }else {
+                        identifier.type = TERMINAL_END_LINE_WITH_CARRIAGE_RETURN;
+                        identifier.identifying = false;
+                        identifier.identified = true;
+                    }
+                }
+
+                if(!identifier.identified && c=='\n'){
+                    identifier.type = TERMINAL_END_LINE_WITH_LINE_FEED;
+                    identifier.identified = true;
+                    identifier.identifying = false;
+                }
                 cmd += c;
                 Serial.write(c);
             }
-            if (c == '\n') {
+
+
+            if ((c == '\r' && !identifier.identified) || (c == '\r' && identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN) || (c== '\n' && (identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED || identifier.type == TERMINAL_END_LINE_WITH_BOTH))) {
+                if(c=='\r'){
+                    Serial.println();
+                }
+                if(identifier.identified && identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
+                    Serial.write('\r');
+                }
+                if(!identifier.identified){
+                    identifier.identifying = true;
+                }
                 parser->processCommand(cmd, response);
-                cmd.erase(cmd.end() - 1);
                 array.add(cmd);
                 cmd = "";
                 Serial.println(response.c_str());
