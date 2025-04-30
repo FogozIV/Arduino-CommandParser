@@ -13,13 +13,15 @@
 #include <cctype>
 #include <cstdio>
 #include <algorithm>
+#include "RoundArray.h"
+#include "StateMachine.h"
 
 #define MAX_RESPONSE_SIZE 128
 
 // Template to convert strings to integers with error handling
 // Supports both signed and unsigned integers
 template<typename T>
-size_t strToInt(const char* buf, T* value, T min_value, T max_value) {
+size_t strToInt(const char *buf, T *value, T min_value, T max_value) {
     size_t position = 0;
     bool isNegative = false;
 
@@ -30,9 +32,18 @@ size_t strToInt(const char* buf, T* value, T min_value, T max_value) {
 
     int base = 10;
     if (buf[position] == '0') {
-        if (buf[position + 1] == 'b') { base = 2; position += 2; }
-        else if (buf[position + 1] == 'o') { base = 8; position += 2; }
-        else if (buf[position + 1] == 'x') { base = 16; position += 2; }
+        if (buf[position + 1] == 'b') {
+            base = 2;
+            position += 2;
+        }
+        else if (buf[position + 1] == 'o') {
+            base = 8;
+            position += 2;
+        }
+        else if (buf[position + 1] == 'x') {
+            base = 16;
+            position += 2;
+        }
     }
 
     T result = 0;
@@ -65,15 +76,22 @@ public:
         std::variant<double, uint64_t, int64_t, std::string> value;
 
         Argument() = default;
+
         Argument(double d) : value(d) {}
+
         Argument(uint64_t u) : value(u) {}
+
         Argument(int64_t i) : value(i) {}
-        Argument(const std::string& s) : value(s) {}
+
+        Argument(const std::string &s) : value(s) {}
 
         double asDouble() const { return std::get<double>(value); }
+
         uint64_t asUInt64() const { return std::get<uint64_t>(value); }
+
         int64_t asInt64() const { return std::get<int64_t>(value); }
-        const std::string& asString() const { return std::get<std::string>(value); }
+
+        const std::string &asString() const { return std::get<std::string>(value); }
     };
 
     struct Command {
@@ -82,15 +100,16 @@ public:
         std::function<std::string(std::vector<Argument>)> callback;
         std::string description;
 
-        Command(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback, std::string description)
-            : name(name), argTypes(argTypes), callback(callback),description(description) {}
+        Command(const std::string &name, const std::string &argTypes,
+                std::function<std::string(std::vector<Argument>)> callback, std::string description)
+                : name(name), argTypes(argTypes), callback(callback), description(description) {}
     };
 
 private:
     std::vector<Argument> commandArgs;
     std::vector<Command> commandDefinitions;
 
-    size_t parseString(const char* buf, std::string& output) {
+    size_t parseString(const char *buf, std::string &output) {
         size_t readCount = 0;
         bool isQuoted = (buf[0] == '"');
 
@@ -107,26 +126,27 @@ private:
     }
 
 public:
-    bool registerCommand(const std::string& name, const std::string& argTypes, std::function<std::string(std::vector<Argument>)> callback, std::string description="") {
-        for (char type : argTypes) {
+    bool registerCommand(const std::string &name, const std::string &argTypes,
+                         std::function<std::string(std::vector<Argument>)> callback, std::string description = "") {
+        for (char type: argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
         std::string new_name;
-        for (auto& c: name) {
+        for (auto &c: name) {
             new_name += tolower(c);
         }
         commandDefinitions.emplace_back(new_name, argTypes, callback, description);
         return true;
     }
 
-    bool processCommand(const std::string& commandStr, std::string& response) {
+    bool processCommand(const std::string &commandStr, std::string &response) {
         std::string command = commandStr;
-        command.erase(command.find_last_not_of(" \n\r\t")+1);
+        command.erase(command.find_last_not_of(" \n\r\t") + 1);
         std::string name = command.substr(0, command.find(' '));
         command.erase(0, command.find(' ') + 1);
 
         auto it = std::find_if(commandDefinitions.begin(), commandDefinitions.end(),
-                               [&name](const Command& cmd) {
+                               [&name](const Command &cmd) {
                                    return cmd.name == name;
                                });
 
@@ -136,14 +156,14 @@ public:
             return false;
         }
 
-        const std::string& argTypes = it->argTypes;
+        const std::string &argTypes = it->argTypes;
         commandArgs.clear();
 
-        for (char argType : argTypes) {
+        for (char argType: argTypes) {
             Argument arg;
             switch (argType) {
                 case 'd': {
-                    char* end;
+                    char *end;
                     double value = std::strtod(command.c_str(), &end);
                     if (end == command.c_str()) {
                         response = "Error: Invalid double argument.";
@@ -155,7 +175,8 @@ public:
                 }
                 case 'u': {
                     uint64_t value;
-                    size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0, std::numeric_limits<uint64_t>::max());
+                    size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0,
+                                                          std::numeric_limits<uint64_t>::max());
                     if (bytesRead == 0) {
                         response = "Error: Invalid unsigned integer argument.";
                         return false;
@@ -169,7 +190,8 @@ public:
                 }
                 case 'i': {
                     int64_t value;
-                    size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::max());
+                    size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(),
+                                                std::numeric_limits<int64_t>::max());
                     if (bytesRead == 0) {
                         response = "Error: Invalid integer argument.";
                         return false;
@@ -216,7 +238,7 @@ inline void clearline() {
 }
 
 //source chatgpt
-std::string longestCommonPrefix(const std::vector<std::string>& strs) {
+std::string longestCommonPrefix(const std::vector<std::string> &strs) {
     if (strs.empty()) return "";
 
     // Start by assuming the whole first string is the prefix
@@ -236,104 +258,30 @@ std::string longestCommonPrefix(const std::vector<std::string>& strs) {
     return prefix;
 }
 
-class RoundArray {
-    std::vector<std::string> strs;
-    int index = 0;
-    int lookingIndex = 0;
-    int max_size;
-public:
-    RoundArray(int max_size=10) : strs(max_size, ""), max_size(max_size) {
 
+void setCommand(std::string& cmd, const std::string &a) {
+    if (a != "") {
+        clearline();
+        cmd = a;
+        Serial.print(a.c_str());
     }
+}
 
-    void add(const std::string& str) {
-        std::string cmd = str;
-        cmd.erase(cmd.find_last_not_of(" \n\r\t")+1);
-        if (strs[(index+max_size-1)%max_size] == cmd) {
-            return;
-        }
-        strs[index] = cmd;
-        index = (index + 1) % max_size;
-        lookingIndex = index;
-    }
-
-    const std::string& go_up() {
-        lookingIndex = (lookingIndex+max_size - 1) % max_size;
-        if (strs[lookingIndex] == "") {
-            lookingIndex = (lookingIndex+max_size +1) % max_size;
-        }
-        return strs[lookingIndex];
-    }
-
-    const std::string& go_down() {
-        lookingIndex = (lookingIndex+max_size + 1) % max_size;
-        if (strs[lookingIndex] == "") {
-            lookingIndex = (lookingIndex+max_size -1) % max_size;
-        }
-        return strs[lookingIndex];
-    }
-
-};
-
-class StateMachine {
-    bool started = false;
-    std::vector<uint8_t> chars;
-    std::string& command;
-    RoundArray& array;
-
-    void setCommand(const std::string& a) {
-        chars.clear();
-        started = false;;
-        if (a!="") {
-            clearline();
-            this->command=a;
-            Serial.print(a.c_str());
-        }
-    }
-
-public:
-    StateMachine(std::string& command, RoundArray& array): command(command), array(array) {
-
-    }
-    void begin() {
-        started = true;
-    }
-
-    bool isStarted() {
-        return started;
-    }
-
-    std::vector<uint8_t> append(char c) {
-        if (chars.empty() && c==91) {
-            chars.push_back(c);
-            return {};
-        }
-        if (chars.size() == 1 && chars[0] == 91) {
-            if (c == 65) {
-                setCommand(array.go_up());
-                return {};
-            }
-            if (c==66) {
-                setCommand(array.go_down());
-                return {};
-            }
-
-        }
-        std::vector<uint8_t> result = chars;
-        chars.clear();
-        started = false;
-        return result;
-
-    }
-};
-
-inline void handle_commandline(void* command_parser) {
-    auto* parser = static_cast<CommandParser *>(command_parser);
+inline void handle_commandline(void *command_parser) {
+    auto *parser = static_cast<CommandParser *>(command_parser);
     std::string cmd;
     std::string response;
     RoundArray array;
-    StateMachine stateMachine(cmd, array);
+    StateMachine stateMachine;
 
+
+
+    stateMachine.set(UP_LAST_CHAR, [&]{
+        setCommand(cmd, array.go_up());
+    });
+    stateMachine.set(DOWN_LAST_CHAR, [&]{
+        setCommand(cmd, array.go_down());
+    });
 
     while (true) {
         while (Serial.available()) {
@@ -346,8 +294,8 @@ inline void handle_commandline(void* command_parser) {
                 auto result = stateMachine.append(c);
                 if (result.empty())
                     continue;
-                for (auto a : result) {
-                    Serial.print((char)a);
+                for (auto a: result) {
+                    Serial.print((char) a);
                 }
             }
             if (c == 8) {
@@ -356,43 +304,45 @@ inline void handle_commandline(void* command_parser) {
                     clearline();
                     Serial.print(cmd.c_str());
                 }
-            }else if (c == 9) {
+            } else if (c == 9) {
                 std::vector<CommandParser::Command> args;
                 std::vector<std::string> argsStrings;
-                for (auto& cmd_data : parser->command_definitions()) {
-                    if ( cmd_data.name.rfind(cmd, 0) == 0) {
+                for (auto &cmd_data: parser->command_definitions()) {
+                    if (cmd_data.name.rfind(cmd, 0) == 0) {
                         args.push_back(cmd_data);
                         argsStrings.push_back(cmd_data.name);
                     }
                 }
                 if (args.empty()) {
 
-                }else {
+                } else {
                     if (args.size() == 1) {
                         clearline();
                         cmd = args.front().name;
                         Serial.print(cmd.c_str());
-                    }else {
+                    } else {
                         Serial.println();
-                        for (CommandParser::Command& cmd : args) {
-                            Serial.println((cmd.name + ": " + (cmd.description.empty() ? "No description found" : cmd.description)).c_str());
+                        for (CommandParser::Command &cmd: args) {
+                            Serial.println((cmd.name + ": " + (cmd.description.empty() ? "No description found"
+                                                                                       : cmd.description)).c_str());
                         }
                         cmd = longestCommonPrefix(argsStrings);
                         Serial.print(cmd.c_str());
                     }
                 }
-            }else {
-                cmd+=c;
+            } else {
+                cmd += c;
                 Serial.write(c);
             }
-            if (c=='\n') {
+            if (c == '\n') {
                 parser->processCommand(cmd, response);
-                cmd.erase(cmd.end()-1);
+                cmd.erase(cmd.end() - 1);
                 array.add(cmd);
                 cmd = "";
                 Serial.println(response.c_str());
             }
         }
+        Threads::yield();
     }
 }
 
