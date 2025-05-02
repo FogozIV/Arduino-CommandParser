@@ -25,7 +25,7 @@ struct TerminalIdentifier{
     uint8_t type = 0;
     bool identified = false;
     bool identifying = false;
-} identifier;
+};
 // Template to convert strings to integers with error handling
 // Supports both signed and unsigned integers
 template<typename T>
@@ -105,11 +105,11 @@ public:
     struct Command {
         std::string name;
         std::string argTypes;
-        std::function<std::string(std::vector<Argument>)> callback;
+        std::function<std::string(std::vector<Argument>, Stream& stream)> callback;
         std::string description;
 
         Command(const std::string &name, const std::string &argTypes,
-                std::function<std::string(std::vector<Argument>)> callback, std::string description)
+                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description)
                 : name(name), argTypes(argTypes), callback(callback), description(description) {}
     };
 
@@ -135,7 +135,7 @@ private:
 
 public:
     bool registerCommand(const std::string &name, const std::string &argTypes,
-                         std::function<std::string(std::vector<Argument>)> callback, std::string description = "") {
+                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description = "") {
         for (char type: argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
@@ -147,9 +147,10 @@ public:
         return true;
     }
 
-    bool processCommand(const std::string &commandStr, std::string &response) {
+    bool processCommand(const std::string &commandStr, std::string &response, Stream& stream) {
         std::string command = commandStr;
         command.erase(command.find_last_not_of(" \n\r\t") + 1);
+        command.erase(0, command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"));
         std::string name = command.substr(0, command.find(' '));
         command.erase(0, command.find(' ') + 1);
 
@@ -226,7 +227,7 @@ public:
             commandArgs.push_back(arg);
         }
 
-        response = it->callback(commandArgs);
+        response = it->callback(commandArgs, stream);
         return true;
     }
 
@@ -235,14 +236,14 @@ public:
     }
 };
 
-inline void clearline() {
+inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
     if(identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN || identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
-        Serial.print("\r");
+        stream.print("\r");
         std::string str(40, ' ');
-        Serial.print(str.c_str());
-        Serial.print("\r");
+        stream.print(str.c_str());
+        stream.print("\r");
     }else{
-        Serial.println();
+        stream.println();
     }
 
 }
@@ -269,34 +270,39 @@ std::string longestCommonPrefix(const std::vector<std::string> &strs) {
 }
 
 
-void setCommand(std::string& cmd, const std::string &a) {
+void setCommand(std::string& cmd, const std::string &a, Stream& stream, const TerminalIdentifier& identifier) {
     if (a != "") {
-        clearline();
+        clearline(stream, identifier);
         cmd = a;
-        Serial.print(a.c_str());
+        stream.print(a.c_str());
     }
 }
 
-[[noreturn]] inline void handle_commandline(void *command_parser) {
-    auto *parser = static_cast<CommandParser *>(command_parser);
+
+
+class CommandLineHandler {
     std::string cmd;
     std::string response;
     RoundArray array;
     StateMachine stateMachine;
     TerminalIdentifier id;
+    CommandParser& parser;
+    Stream& stream;
+
+public:
+    CommandLineHandler(CommandParser& parser, Stream& stream): parser(parser), stream(stream) {}
+    void handle_commandline() {
 
 
+        stateMachine.set(UP_LAST_CHAR, [&]{
+            setCommand(cmd, array.go_up(), stream, id);
+        });
+        stateMachine.set(DOWN_LAST_CHAR, [&]{
+            setCommand(cmd, array.go_down(), stream, id);
+        });
 
-    stateMachine.set(UP_LAST_CHAR, [&]{
-        setCommand(cmd, array.go_up());
-    });
-    stateMachine.set(DOWN_LAST_CHAR, [&]{
-        setCommand(cmd, array.go_down());
-    });
-
-    while (true) {
-        while (Serial.available()) {
-            char c = Serial.read();
+        while (stream.available()) {
+            char c = stream.read();
             if (c == 27) {
                 stateMachine.begin();
                 continue;
@@ -306,19 +312,19 @@ void setCommand(std::string& cmd, const std::string &a) {
                 if (result.empty())
                     continue;
                 for (auto a: result) {
-                    Serial.print((char) a);
+                    stream.print((char) a);
                 }
             }
             if (c == 8) {
                 if (!cmd.empty()) {
                     cmd.pop_back();
-                    clearline();
-                    Serial.print(cmd.c_str());
+                    clearline(stream, id);
+                    stream.print(cmd.c_str());
                 }
             } else if (c == 9) {
                 std::vector<CommandParser::Command> args;
                 std::vector<std::string> argsStrings;
-                for (auto &cmd_data: parser->command_definitions()) {
+                for (auto &cmd_data: parser.command_definitions()) {
                     if (cmd_data.name.rfind(cmd, 0) == 0) {
                         args.push_back(cmd_data);
                         argsStrings.push_back(cmd_data.name);
@@ -328,62 +334,62 @@ void setCommand(std::string& cmd, const std::string &a) {
 
                 } else {
                     if (args.size() == 1) {
-                        clearline();
+                        clearline(stream, id);
                         cmd = args.front().name;
-                        Serial.print(cmd.c_str());
+                        stream.print(cmd.c_str());
                     } else {
-                        Serial.println();
+                        stream.println();
                         for (CommandParser::Command &cmd: args) {
-                            Serial.println((cmd.name + ": " + (cmd.description.empty() ? "No description found"
+                            stream.println((cmd.name + ": " + (cmd.description.empty() ? "No description found"
                                                                                        : cmd.description)).c_str());
                         }
                         cmd = longestCommonPrefix(argsStrings);
-                        Serial.print(cmd.c_str());
+                        stream.print(cmd.c_str());
                     }
                 }
             } else {
 
-                if(identifier.identifying){
+                if(id.identifying){
                     if(c == '\n') {
-                        identifier.type = TERMINAL_END_LINE_WITH_BOTH;
-                        identifier.identifying = false;
-                        identifier.identified = true;
+                        id.type = TERMINAL_END_LINE_WITH_BOTH;
+                        id.identifying = false;
+                        id.identified = true;
                         continue;
                     }else {
-                        identifier.type = TERMINAL_END_LINE_WITH_CARRIAGE_RETURN;
-                        identifier.identifying = false;
-                        identifier.identified = true;
+                        id.type = TERMINAL_END_LINE_WITH_CARRIAGE_RETURN;
+                        id.identifying = false;
+                        id.identified = true;
                     }
                 }
 
-                if(!identifier.identified && c=='\n'){
-                    identifier.type = TERMINAL_END_LINE_WITH_LINE_FEED;
-                    identifier.identified = true;
-                    identifier.identifying = false;
+                if(!id.identified && c=='\n'){
+                    id.type = TERMINAL_END_LINE_WITH_LINE_FEED;
+                    id.identified = true;
+                    id.identifying = false;
                 }
                 cmd += c;
-                Serial.write(c);
+                stream.write(c);
             }
 
 
-            if ((c == '\r' && !identifier.identified) || (c == '\r' && identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN) || (c== '\n' && (identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED || identifier.type == TERMINAL_END_LINE_WITH_BOTH))) {
+            if ((c == '\r' && !id.identified) || (c == '\r' && id.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN) || (c== '\n' && (id.type == TERMINAL_END_LINE_WITH_LINE_FEED || id.type == TERMINAL_END_LINE_WITH_BOTH))) {
                 if(c=='\r'){
-                    Serial.println();
+                    stream.println();
                 }
-                if(identifier.identified && identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
-                    Serial.write('\r');
+                if(id.identified && id.type == TERMINAL_END_LINE_WITH_LINE_FEED){
+                    stream.write('\r');
                 }
-                if(!identifier.identified){
-                    identifier.identifying = true;
+                if(!id.identified){
+                    id.identifying = true;
                 }
-                parser->processCommand(cmd, response);
+                parser.processCommand(cmd, response, stream);
                 array.add(cmd);
                 cmd = "";
-                Serial.println(response.c_str());
+                stream.println(response.c_str());
             }
         }
         Threads::yield();
     }
-}
+};
 
 #endif
