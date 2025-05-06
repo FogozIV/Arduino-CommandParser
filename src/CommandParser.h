@@ -249,7 +249,7 @@ inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
 }
 
 //source chatgpt
-std::string longestCommonPrefix(const std::vector<std::string> &strs) {
+inline std::string longestCommonPrefix(const std::vector<std::string> &strs) {
     if (strs.empty()) return "";
 
     // Start by assuming the whole first string is the prefix
@@ -270,7 +270,7 @@ std::string longestCommonPrefix(const std::vector<std::string> &strs) {
 }
 
 
-void setCommand(std::string& cmd, const std::string &a, Stream& stream, const TerminalIdentifier& identifier) {
+inline void setCommand(std::string& cmd, const std::string &a, Stream& stream, const TerminalIdentifier& identifier) {
     if (a != "") {
         clearline(stream, identifier);
         cmd = a;
