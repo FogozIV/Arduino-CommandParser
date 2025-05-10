@@ -244,16 +244,18 @@ public:
         }
         if (args.empty()) {
             std::string command = cmd;
-            command.erase(0, command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"));
-            const auto empty_char_pos = command.find_first_of(' ');
-            std::string name = command.substr(0, empty_char_pos);
-            if (empty_char_pos == std::string::npos) {
-                command.clear();
-            }else {
-                command.erase(0, empty_char_pos);
+            auto of = command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ");
+            if (of == std::string::npos) {
+                return {args, argsStrings};
             }
+            command.erase(0, of);
+            const auto empty_char_pos = command.find_first_of(' ');
+            if (empty_char_pos == std::string::npos) {
+                return {args, argsStrings};
+            }
+            std::string name = command.substr(0, empty_char_pos);
+            command.erase(0, empty_char_pos);
             command.erase(0, command.find_first_not_of(" \n\r\t"));
-
             auto it_math = std::find_if(mathCommandDefinition.begin(), mathCommandDefinition.end(),[&name](const MathCommand& cmd){ return cmd.name == name;});
             if (it_math == mathCommandDefinition.end()) {
                 return {args, argsStrings};
@@ -499,16 +501,17 @@ class CommandLineHandler {
     Stream& stream;
 
 public:
-    CommandLineHandler(CommandParser& parser, Stream& stream): parser(parser), stream(stream) {}
-    void handle_commandline() {
-
-
+    CommandLineHandler(CommandParser& parser, Stream& stream): parser(parser), stream(stream) {
         stateMachine.set(UP_LAST_CHAR, [&]{
             setCommand(cmd, array.go_up(), stream, id);
         });
         stateMachine.set(DOWN_LAST_CHAR, [&]{
             setCommand(cmd, array.go_down(), stream, id);
         });
+
+    }
+    void handle_commandline() {
+
 
         while (stream.available()) {
             char c = stream.read();
@@ -550,7 +553,6 @@ public:
                     }
                 }
             } else {
-
                 if(id.identifying){
                     if(c == '\n') {
                         id.type = TERMINAL_END_LINE_WITH_BOTH;
@@ -592,9 +594,6 @@ public:
                 }
             }
         }
-#ifdef _THREADS_H
-        Threads::yield();
-#endif
     }
 };
 
