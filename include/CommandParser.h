@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <memory>
 
+#include "FlashString.h"
 #include "RoundArray.h"
 #include "StateMachine.h"
 
@@ -43,20 +44,21 @@ enum MathOP {
     MathOPCount
 };
 #undef MATHOP
-#define MATHOP(name, str) #str,
+#define MATHOP(name, str) FlashString(F(#str)),
 
-inline static std::string mathOP_names[] = {
+inline static FlashString mathOP_names[] = {
     MATHOPS
 };
 
-inline static std::string mathOPToString(MathOP op) {
-    if (op >= MathOP::MathOPCount || op < 0) return "Unknown";
+inline static const FlashString& mathOPToString(MathOP op) {
+    if (op >= MathOP::MathOPCount || op < 0) return F("Unknown");
     return mathOP_names[static_cast<int>(op)];
 }
 
-constexpr static MathOP stringToMathOP(const std::string& str) {
+inline static MathOP stringToMathOP(FlashString str) {
     for (int i = 0; i < MathOPCount; ++i) {
-        if (str == mathOP_names[i])
+        FlashString str_name = mathOP_names[i];
+        if (str_name == str)
             return static_cast<MathOP>(i);
     }
     return MathOPCount;
@@ -134,7 +136,7 @@ size_t strToInt(const char *buf, T *value, T min_value, T max_value) {
 class CommandParser {
 public:
     struct Argument {
-        std::variant<double, uint64_t, int64_t, std::string> value;
+        std::variant<double, uint64_t, int64_t, String> value;
 
         Argument() = default;
 
@@ -144,7 +146,7 @@ public:
 
         Argument(int64_t i) : value(i) {}
 
-        Argument(const std::string &s) : value(s) {}
+        Argument(const String &s) : value(s) {}
 
         double asDouble() const { return std::get<double>(value); }
 
@@ -152,31 +154,32 @@ public:
 
         int64_t asInt64() const { return std::get<int64_t>(value); }
 
-        const std::string &asString() const { return std::get<std::string>(value); }
+        const String &asString() const { return std::get<String>(value); }
+
     };
 
     struct BaseCommand {
-        std::string name;
-        std::string description;
-        BaseCommand(const std::string &name, const std::string &description) : name(name), description(description) {}
+        FlashString name;
+        FlashString description;
+        BaseCommand(const FlashString name, const FlashString description) : name(name), description(description) {}
     };
 
     struct Command : public BaseCommand {
-        std::string argTypes;
-        std::function<std::string(std::vector<Argument>, Stream& stream)> callback;
+        FlashString argTypes;
+        std::function<FlashString(std::vector<Argument>, Stream& stream)> callback;
 
-        Command(const std::string &name, const std::string &argTypes,
-                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description)
+        Command(const FlashString name, const FlashString &argTypes,
+                std::function<FlashString(std::vector<Argument>, Stream& stream)> callback, FlashString description)
                 : BaseCommand(name, description), argTypes(argTypes), callback(callback) {}
     };
 
 
     struct MathCommand : public BaseCommand {
         std::shared_ptr<DoubleRef> value;
-        std::function<std::string( Stream& stream, double value, MathOP op)> callback;
+        std::function<FlashString( Stream& stream, double value, MathOP op)> callback;
         template<typename T>
-        MathCommand(const std::string &name, T& value,
-                std::function<std::string( Stream& stream, double value, MathOP op)> callback, std::string description)
+        MathCommand(const FlashString name, T& value,
+                std::function<FlashString( Stream& stream, double value, MathOP op)> callback, FlashString description)
                     :BaseCommand(name, description), value(std::make_shared<DoubleRefImpl<T>>(value)),   callback(callback){}
     };
 
@@ -185,7 +188,7 @@ private:
     std::vector<Command> commandDefinitions;
     std::vector<MathCommand> mathCommandDefinition;
 
-    size_t parseString(const char *buf, std::string &output) {
+    size_t parseString(const char *buf, String &output) {
         size_t readCount = 0;
         bool isQuoted = (buf[0] == '"');
 
@@ -195,100 +198,93 @@ private:
             char c = buf[readCount++];
             if (isQuoted && c == '"') break;
             if (!isQuoted && std::isspace(c)) break;
-            output.push_back(c);
+            output += c;
         }
 
         return readCount;
     }
 
 public:
-    bool registerCommand(const std::string &name, const std::string &argTypes,
-                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description = "") {
-        for (char type: argTypes) {
+    bool registerCommand(FlashString name, FlashString argTypes,
+                         std::function<FlashString(std::vector<Argument>, Stream& stream)> callback, FlashString description = "") {
+        for (char type: String(argTypes)) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
-        std::string new_name;
-        for (auto &c: name) {
-            new_name += tolower(c);
-        }
-        commandDefinitions.emplace_back(new_name, argTypes, callback, description);
+        commandDefinitions.emplace_back(name, argTypes, callback, description);
         return true;
     }
     template<typename T>
-    bool registerMathCommand(std::string name, T& value, std::function<std::string(Stream& stream, double value, MathOP op)> callback, std::string description = "") {
-        for (auto &c : name) {
-            c = tolower(c);
-        }
+    bool registerMathCommand(FlashString name, T& value, std::function<FlashString(Stream& stream, double value, MathOP op)> callback, String description = "") {
         mathCommandDefinition.emplace_back(name, value, callback, description);
         return true;
     }
 
 
-    std::tuple<std::vector<CommandParser::BaseCommand>, std::vector<std::string>> tab_complete(std::string cmd) {
+    std::tuple<std::vector<CommandParser::BaseCommand>, std::vector<FlashString>> tab_complete(String cmd) {
         std::vector<CommandParser::BaseCommand> args;
-        std::vector<std::string> argsStrings;
+        std::vector<FlashString> argsStrings;
         for (auto&c : cmd) {
             c = tolower(c);
         }
         for (auto &cmd_data: command_definitions()) {
-            if (cmd_data.name.rfind(cmd, 0) == 0) {
+            if (String(cmd_data.name).indexOf(cmd, 0) == 0) {
                 args.push_back(cmd_data);
                 argsStrings.push_back(cmd_data.name);
             }
         }
         for (auto &cmd_data: mathCommandDefinition) {
-            if (cmd_data.name.rfind(cmd, 0) == 0) {
+            if (String(cmd_data.name).indexOf(cmd, 0) == 0) {
                 args.push_back(cmd_data);
-                argsStrings.push_back(cmd_data.name + " ");
+                argsStrings.push_back(String(cmd_data.name) + " ");
             }
         }
         if (args.empty()) {
-            std::string command = cmd;
-            auto of = command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ");
-            if (of == std::string::npos) {
+            String command = cmd;
+            auto of = findFirstOf(command, FlashString(F("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ")));
+            if (of == -1) {
                 return {args, argsStrings};
             }
-            command.erase(0, of);
-            const auto empty_char_pos = command.find_first_of(' ');
-            if (empty_char_pos == std::string::npos) {
+            command.remove(0, of);
+            const auto empty_char_pos = findFirstOf(command,' ');
+            if (empty_char_pos == -1) {
                 return {args, argsStrings};
             }
-            std::string name = command.substr(0, empty_char_pos);
-            command.erase(0, empty_char_pos);
-            command.erase(0, command.find_first_not_of(" \n\r\t"));
+            String name = command.substring(0, empty_char_pos);
+            command.remove(0, empty_char_pos);
+            command.remove(0, findFirstNotOf(command, " \n\r\t"));
             auto it_math = std::find_if(mathCommandDefinition.begin(), mathCommandDefinition.end(),[&name](const MathCommand& cmd){ return cmd.name == name;});
             if (it_math == mathCommandDefinition.end()) {
                 return {args, argsStrings};
             }
             for (auto &cmd_data : mathOP_names) {
-                if (cmd_data == "")
+                if (cmd_data == F(""))
                     continue;
-                if (cmd_data.rfind(command, 0) == 0) {
-                    argsStrings.push_back(it_math->name + " " + cmd_data);
-                    args.push_back({it_math->name + " " + cmd_data, "Using the command " + it_math->name + " " + cmd_data + " to modify the value of " + it_math->name});
+                if (String(cmd_data).indexOf(command, 0) == 0) {
+                    argsStrings.push_back(it_math->name + F(" ") + cmd_data);
+                    args.push_back({it_math->name + F(" ") + cmd_data, F("Using the command ") + it_math->name + F(" ") + cmd_data + F(" to modify the value of ") + it_math->name});
                 }
             }
         }
         return {args, argsStrings};
     }
 
-    bool processCommand(const std::string &commandStr, std::string &response, Stream& stream) {
-        std::string command = commandStr;
+    bool processCommand(const String &commandStr, FlashString &response, Stream& stream) {
+        String command = commandStr;
         for (auto&c : command) {
             c = tolower(c);
         }
-        command.erase(command.find_last_not_of(" \n\r\t") + 1);
-        command.erase(0, command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"));
-        const auto empty_char_pos = command.find_first_of(' ');
-        std::string name = command.substr(0, empty_char_pos);
-        if (empty_char_pos == std::string::npos) {
-            command.clear();
+        command.remove(findLastNotOf(command, " \n\r\t") + 1);
+        command.remove(0, findFirstOf(command, FlashString(F("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"))));
+        const auto empty_char_pos = findFirstOf(command, ' ');
+        String name = command.substring(0, empty_char_pos);
+        if (empty_char_pos == -1) {
+            command.remove(0, command.length());
         }else {
-            command.erase(0, empty_char_pos + 1);
+            command.remove(0, empty_char_pos + 1);
         }
-        auto pos = command.find_first_not_of(" \n\r\t");
-        if (pos != 0 && pos != std::string::npos) {
-            command.erase(0, pos);
+        auto pos = findLastNotOf(command, " \n\r\t");
+        if (pos != 0 && pos != -1) {
+            command.remove(0, pos);
         }
 
         auto it = std::find_if(commandDefinitions.begin(), commandDefinitions.end(),
@@ -299,29 +295,29 @@ public:
         if (it == commandDefinitions.end()) {
             auto it_math = std::find_if(mathCommandDefinition.begin(), mathCommandDefinition.end(),[&name](const MathCommand& cmd){ return cmd.name == name;});
             if (it_math == mathCommandDefinition.end()) {
-                response = "Error: Unknown command.";
+                response = F("Error: Unknown command.");
                 return false;
             }
-            command.erase(command.find_last_not_of(" \n\r\t") + 1);
-            if (command.empty()) {
+            command.remove(findLastNotOf(command, " \n\r\t") + 1);
+            if (command.length() == 0) {
                 response = it_math->callback(stream, (it_math->value)->get(), MathOP::EMPTY);
                 return true;
             }
-            const auto e_c_p = command.find_first_of(' ');
-            if (e_c_p == std::string::npos) {
-                response = "Error: Invalid math command please add value.";
+            const auto e_c_p = findFirstOf(command,' ');
+            if (e_c_p == -1) {
+                response = F("Error: Invalid math command please add value.");
                 return false;
             }
-            std::string math_command = command.substr(0, e_c_p);
-            if (e_c_p == std::string::npos) {
-                response = "Error: Invalid math command.";
+            String math_command = command.substring(0, e_c_p);
+            if (e_c_p == -1) {
+                response = F("Error: Invalid math command.");
                 return false;
             }
-            command.erase(0, e_c_p + 1);
+            command.remove(0, e_c_p + 1);
             char *end;
             double value = std::strtod(command.c_str(), &end);
             if (end == command.c_str()) {
-                response = "Error: Invalid double argument.";
+                response = F("Error: Invalid double argument.");
                 return false;
             }
             auto mathOp = stringToMathOP(math_command);
@@ -363,7 +359,7 @@ public:
                     break;
                 }
                 default: {
-                    response = "Unknown operator ! " + math_command;
+                    response = F("Unknown operator ! ") + math_command;
                     return false;
                 }
             }
@@ -371,7 +367,7 @@ public:
             return true;
         }
 
-        const std::string &argTypes = it->argTypes;
+        const String &argTypes = it->argTypes;
         commandArgs.clear();
 
         for (char argType: argTypes) {
@@ -381,11 +377,11 @@ public:
                     char *end;
                     double value = std::strtod(command.c_str(), &end);
                     if (end == command.c_str()) {
-                        response = "Error: Invalid double argument.";
+                        response = F("Error: Invalid double argument.");
                         return false;
                     }
                     arg = Argument(value);
-                    command.erase(0, end - command.c_str());
+                    command.remove(0, end - command.c_str());
                     break;
                 }
                 case 'u': {
@@ -393,13 +389,13 @@ public:
                     size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0,
                                                           std::numeric_limits<uint64_t>::max());
                     if (bytesRead == 0) {
-                        response = "Error: Invalid unsigned integer argument.";
+                        response = F("Error: Invalid unsigned integer argument.");
                         return false;
                     }
                     arg = Argument(value);
-                    command.erase(0, bytesRead);
-                    if (command.size() > 0) {
-                        command.erase(0, 1);
+                    command.remove(0, bytesRead);
+                    if (command.length() > 0) {
+                        command.remove(0, 1);
                     }
                     break;
                 }
@@ -408,33 +404,33 @@ public:
                     size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(),
                                                 std::numeric_limits<int64_t>::max());
                     if (bytesRead == 0) {
-                        response = "Error: Invalid integer argument.";
+                        response = F("Error: Invalid integer argument.");
                         return false;
                     }
                     arg = Argument(value);
-                    command.erase(0, bytesRead);
-                    if (command.size() > 0) {
-                        command.erase(0, 1);
+                    command.remove(0, bytesRead);
+                    if (command.length() > 0) {
+                        command.remove(0, 1);
                     }
                     break;
                 }
                 case 's': {
-                    std::string value;
+                    String value;
                     size_t bytesRead = parseString(command.c_str(), value);
                     if (bytesRead == 0) {
-                        response = "Error: Invalid string argument.";
+                        response = F("Error: Invalid string argument.");
                         return false;
                     }
                     arg = Argument(value);
-                    command.erase(0, bytesRead);
+                    command.remove(0, bytesRead);
                     break;
                 }
             }
             commandArgs.push_back(arg);
         }
-        command.erase(0, command.find_first_not_of(" \t")); // Trim whitespace
-        if (!command.empty()) {
-            response = "Error: Too many arguments provided.";
+        command.remove(0, findFirstNotOf(command, " \t")); // Trim whitespace
+        if (command.length() != 0) {
+            response = F("Error: Too many arguments provided.");
             return false;
         }
 
@@ -450,7 +446,7 @@ public:
 inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
     if(identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN || identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
         stream.print("\r");
-        std::string str(40, ' ');
+        String str(40, ' ');
         stream.print(str.c_str());
         stream.print("\r");
     }else{
@@ -460,11 +456,10 @@ inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
 }
 
 //source chatgpt
-inline std::string longestCommonPrefix(const std::vector<std::string> &strs) {
+inline String longestCommonPrefix(const std::vector<FlashString> &strs) {
     if (strs.empty()) return "";
-
     // Start by assuming the whole first string is the prefix
-    std::string prefix = strs[0];
+    FlashString prefix = strs[0];
 
     for (size_t i = 1; i < strs.size(); ++i) {
         // Compare prefix with each string
@@ -481,7 +476,7 @@ inline std::string longestCommonPrefix(const std::vector<std::string> &strs) {
 }
 
 
-inline void setCommand(std::string& cmd, const std::string &a, Stream& stream, const TerminalIdentifier& identifier) {
+inline void setCommand(String& cmd, const String &a, Stream& stream, const TerminalIdentifier& identifier) {
     if (a != "") {
         clearline(stream, identifier);
         cmd = a;
@@ -492,8 +487,8 @@ inline void setCommand(std::string& cmd, const std::string &a, Stream& stream, c
 
 
 class CommandLineHandler {
-    std::string cmd;
-    std::string response;
+    String cmd;
+    FlashString response =F("");
     RoundArray array;
     StateMachine stateMachine;
     TerminalIdentifier id;
@@ -528,8 +523,8 @@ public:
                 }
             }
             if (c == 8) {
-                if (!cmd.empty()) {
-                    cmd.pop_back();
+                if (cmd != 0) {
+                    cmd.remove(cmd.length() - 1);
                     clearline(stream, id);
                     stream.print(cmd.c_str());
                 }
@@ -545,8 +540,9 @@ public:
                     } else {
                         stream.println();
                         for (auto &cmd: args) {
-                            stream.println((cmd.name + ": " + (cmd.description.empty() ? "No description found"
-                                                                                       : cmd.description)).c_str());
+                            auto a = (cmd.name + F(": ") + (cmd.description.empty() ? FlashString(F("No description found"))
+                                                                                       : cmd.description));
+                            stream.println(String(a));
                         }
                         cmd = longestCommonPrefix(argsStrings);
                         stream.print(cmd.c_str());
@@ -589,7 +585,7 @@ public:
                 parser.processCommand(cmd, response, stream);
                 array.add(cmd);
                 cmd = "";
-                if (response != "") {
+                if (response != F("")) {
                     stream.println(response.c_str());
                 }
             }

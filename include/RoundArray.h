@@ -5,11 +5,12 @@
 #ifndef PAMITEENSY_ROUNDARRAY_H
 #define PAMITEENSY_ROUNDARRAY_H
 #include "Arduino.h"
+#include "FlashString.h"
 #include "vector"
 #include "string"
 
 class RoundArray {
-    std::vector<std::string> strs;
+    std::vector<String> strs;
     int index = 0;
     int lookingIndex = 0;
     int max_size;
@@ -19,9 +20,9 @@ public:
 
     }
 
-    void add(const std::string &str) {
-        std::string cmd = str;
-        cmd.erase(cmd.find_last_not_of(" \n\r\t") + 1);
+    void add(const String &str) {
+        String cmd = str;
+        cmd.remove(findLastNotOf(cmd, " \n\r\t") + 1);
         if (strs[(index + max_size - 1) % max_size] == cmd) {
             return;
         }
@@ -30,7 +31,7 @@ public:
         lookingIndex = index;
     }
 
-    const std::string &go_up() {
+    const String &go_up() {
         lookingIndex = (lookingIndex + max_size - 1) % max_size;
         if (strs[lookingIndex] == "" && block_if_empty) {
             lookingIndex = (lookingIndex + max_size + 1) % max_size;
@@ -38,7 +39,7 @@ public:
         return strs[lookingIndex];
     }
 
-    const std::string &go_down() {
+    const String &go_down() {
         lookingIndex = (lookingIndex + max_size + 1) % max_size;
         if (strs[lookingIndex] == "" && block_if_empty) {
             lookingIndex = (lookingIndex + max_size - 1) % max_size;
