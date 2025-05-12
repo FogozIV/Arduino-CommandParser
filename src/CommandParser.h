@@ -131,7 +131,7 @@ size_t strToInt(const char *buf, T *value, T min_value, T max_value) {
     return position;
 }
 
-class CommandParser {
+class  CommandParser {
 public:
     struct Argument {
         std::variant<double, uint64_t, int64_t, std::string> value;
@@ -157,16 +157,16 @@ public:
 
     struct BaseCommand {
         std::string name;
-        std::string description;
-        BaseCommand(const std::string &name, const std::string &description) : name(name), description(description) {}
+        const char* description;
+        BaseCommand(const std::string &name, const char* description) : name(name), description(description) {}
     };
 
-    struct Command : public BaseCommand {
+    struct  Command : public BaseCommand {
         std::string argTypes;
         std::function<std::string(std::vector<Argument>, Stream& stream)> callback;
 
         Command(const std::string &name, const std::string &argTypes,
-                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description)
+                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const char* description = "")
                 : BaseCommand(name, description), argTypes(argTypes), callback(callback) {}
     };
 
@@ -176,7 +176,7 @@ public:
         std::function<std::string( Stream& stream, double value, MathOP op)> callback;
         template<typename T>
         MathCommand(const std::string &name, T& value,
-                std::function<std::string( Stream& stream, double value, MathOP op)> callback, std::string description)
+                std::function<std::string( Stream& stream, double value, MathOP op)> callback, const char* description)
                     :BaseCommand(name, description), value(std::make_shared<DoubleRefImpl<T>>(value)),   callback(callback){}
     };
 
@@ -203,7 +203,7 @@ private:
 
 public:
     bool registerCommand(const std::string &name, const std::string &argTypes,
-                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description = "") {
+                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const char* description = "") {
         for (char type: argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
         }
@@ -215,7 +215,7 @@ public:
         return true;
     }
     template<typename T>
-    bool registerMathCommand(std::string name, T& value, std::function<std::string(Stream& stream, double value, MathOP op)> callback, std::string description = "") {
+    bool registerMathCommand(std::string name, T& value, std::function<std::string(Stream& stream, double value, MathOP op)> callback, const char* description = "") {
         for (auto &c : name) {
             c = tolower(c);
         }
@@ -224,52 +224,52 @@ public:
     }
 
 
-    std::tuple<std::vector<CommandParser::BaseCommand>, std::vector<std::string>> tab_complete(std::string cmd) {
-        std::vector<CommandParser::BaseCommand> args;
+    std::tuple<std::vector<std::string>, std::vector<std::string>> tab_complete(std::string cmd) {
+        std::vector<std::string> description;
         std::vector<std::string> argsStrings;
         for (auto&c : cmd) {
             c = tolower(c);
         }
         for (auto &cmd_data: command_definitions()) {
             if (cmd_data.name.rfind(cmd, 0) == 0) {
-                args.push_back(cmd_data);
+                description.push_back(cmd_data.description);
                 argsStrings.push_back(cmd_data.name);
             }
         }
         for (auto &cmd_data: mathCommandDefinition) {
             if (cmd_data.name.rfind(cmd, 0) == 0) {
-                args.push_back(cmd_data);
+                description.push_back(cmd_data.description);
                 argsStrings.push_back(cmd_data.name + " ");
             }
         }
-        if (args.empty()) {
+        if (description.empty()) {
             std::string command = cmd;
-            auto of = command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ");
+            auto of = command.find_first_of(PSTR("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"));
             if (of == std::string::npos) {
-                return {args, argsStrings};
+                return {description, argsStrings};
             }
             command.erase(0, of);
             const auto empty_char_pos = command.find_first_of(' ');
             if (empty_char_pos == std::string::npos) {
-                return {args, argsStrings};
+                return {description, argsStrings};
             }
             std::string name = command.substr(0, empty_char_pos);
             command.erase(0, empty_char_pos);
             command.erase(0, command.find_first_not_of(" \n\r\t"));
             auto it_math = std::find_if(mathCommandDefinition.begin(), mathCommandDefinition.end(),[&name](const MathCommand& cmd){ return cmd.name == name;});
             if (it_math == mathCommandDefinition.end()) {
-                return {args, argsStrings};
+                return {description, argsStrings};
             }
             for (auto &cmd_data : mathOP_names) {
                 if (cmd_data == "")
                     continue;
                 if (cmd_data.rfind(command, 0) == 0) {
                     argsStrings.push_back(it_math->name + " " + cmd_data);
-                    args.push_back({it_math->name + " " + cmd_data, "Using the command " + it_math->name + " " + cmd_data + " to modify the value of " + it_math->name});
+                    description.push_back("Using the command " + it_math->name + " " + cmd_data + " to modify the value of " + it_math->name);
                 }
             }
         }
-        return {args, argsStrings};
+        return {description, argsStrings};
     }
 
     bool processCommand(const std::string &commandStr, std::string &response, Stream& stream) {
@@ -278,7 +278,7 @@ public:
             c = tolower(c);
         }
         command.erase(command.find_last_not_of(" \n\r\t") + 1);
-        command.erase(0, command.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ"));
+        command.erase(0, command.find_first_of(PSTR("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ")));
         const auto empty_char_pos = command.find_first_of(' ');
         std::string name = command.substr(0, empty_char_pos);
         if (empty_char_pos == std::string::npos) {
@@ -299,7 +299,7 @@ public:
         if (it == commandDefinitions.end()) {
             auto it_math = std::find_if(mathCommandDefinition.begin(), mathCommandDefinition.end(),[&name](const MathCommand& cmd){ return cmd.name == name;});
             if (it_math == mathCommandDefinition.end()) {
-                response = "Error: Unknown command.";
+                response = PSTR("Error: Unknown command.");
                 return false;
             }
             command.erase(command.find_last_not_of(" \n\r\t") + 1);
@@ -309,19 +309,19 @@ public:
             }
             const auto e_c_p = command.find_first_of(' ');
             if (e_c_p == std::string::npos) {
-                response = "Error: Invalid math command please add value.";
+                response = PSTR("Error: Invalid math command please add value.");
                 return false;
             }
             std::string math_command = command.substr(0, e_c_p);
             if (e_c_p == std::string::npos) {
-                response = "Error: Invalid math command.";
+                response = PSTR("Error: Invalid math command.");
                 return false;
             }
             command.erase(0, e_c_p + 1);
             char *end;
             double value = std::strtod(command.c_str(), &end);
             if (end == command.c_str()) {
-                response = "Error: Invalid double argument.";
+                response = PSTR("Error: Invalid double argument.");
                 return false;
             }
             auto mathOp = stringToMathOP(math_command);
@@ -381,7 +381,7 @@ public:
                     char *end;
                     double value = std::strtod(command.c_str(), &end);
                     if (end == command.c_str()) {
-                        response = "Error: Invalid double argument.";
+                        response = PSTR("Error: Invalid double argument.");
                         return false;
                     }
                     arg = Argument(value);
@@ -393,7 +393,7 @@ public:
                     size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0,
                                                           std::numeric_limits<uint64_t>::max());
                     if (bytesRead == 0) {
-                        response = "Error: Invalid unsigned integer argument.";
+                        response = PSTR("Error: Invalid unsigned integer argument.");
                         return false;
                     }
                     arg = Argument(value);
@@ -408,7 +408,7 @@ public:
                     size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(),
                                                 std::numeric_limits<int64_t>::max());
                     if (bytesRead == 0) {
-                        response = "Error: Invalid integer argument.";
+                        response = PSTR("Error: Invalid integer argument.");
                         return false;
                     }
                     arg = Argument(value);
@@ -422,7 +422,7 @@ public:
                     std::string value;
                     size_t bytesRead = parseString(command.c_str(), value);
                     if (bytesRead == 0) {
-                        response = "Error: Invalid string argument.";
+                        response = PSTR("Error: Invalid string argument.");
                         return false;
                     }
                     arg = Argument(value);
@@ -434,7 +434,7 @@ public:
         }
         command.erase(0, command.find_first_not_of(" \t")); // Trim whitespace
         if (!command.empty()) {
-            response = "Error: Too many arguments provided.";
+            response = PSTR("Error: Too many arguments provided.");
             return false;
         }
 
@@ -534,21 +534,20 @@ public:
                     stream.print(cmd.c_str());
                 }
             } else if (c == 9) {
-                auto [args, argsStrings]= parser.tab_complete(cmd);
-                if (args.empty()) {
+                auto [descriptions, commandNames]= parser.tab_complete(cmd);
+                if (commandNames.empty()) {
 
                 } else {
-                    if (args.size() == 1) {
+                    if (commandNames.size() == 1) {
                         clearline(stream, id);
-                        cmd = argsStrings.front();
+                        cmd = commandNames.front();
                         stream.print(cmd.c_str());
                     } else {
                         stream.println();
-                        for (auto &cmd: args) {
-                            stream.println((cmd.name + ": " + (cmd.description.empty() ? "No description found"
-                                                                                       : cmd.description)).c_str());
+                        for (size_t i = 0; i < commandNames.size(); i++) {
+                            stream.println((commandNames[i] + ": " + (descriptions[i].empty() ? "No description found" : descriptions[i])).c_str());
                         }
-                        cmd = longestCommonPrefix(argsStrings);
+                        cmd = longestCommonPrefix(commandNames);
                         stream.print(cmd.c_str());
                     }
                 }
