@@ -588,10 +588,11 @@ public:
                 parser.processCommand(cmd, response, stream);
                 array.add(cmd);
                 cmd = "";
-                if (response != "") {
+                if (!response.empty()) {
                     stream.println(response.c_str());
                 }
             }
+            stream.flush();
         }
     }
 };
