@@ -588,7 +588,7 @@ public:
                 parser.processCommand(cmd, response, stream);
                 array.add(cmd);
                 cmd = "";
-                if (!response.empty()) {
+                if (!response.empty() && response != "") {
                     stream.println(response.c_str());
                 }
             }
