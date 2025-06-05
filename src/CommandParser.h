@@ -135,8 +135,15 @@ class  CommandParser {
 public:
     struct Argument {
         std::variant<double, uint64_t, int64_t, std::string> value;
+        bool present = true;
 
-        Argument() = default;
+        Argument() {
+            present = false;
+        };
+
+        operator bool() const{
+            return present;
+        }
 
         Argument(double d) : value(d) {}
 
@@ -205,7 +212,7 @@ public:
     bool registerCommand(const std::string &name, const std::string &argTypes,
                          std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const char* description = "") {
         for (char type: argTypes) {
-            if (type != 'd' && type != 'u' && type != 'i' && type != 's') return false;
+            if (type != 'd' && type != 'u' && type != 'i' && type != 's' && type!= 'o') return false;
         }
         std::string new_name;
         for (auto &c: name) {
@@ -373,64 +380,94 @@ public:
 
         const std::string &argTypes = it->argTypes;
         commandArgs.clear();
-
+        bool optional = false;
+        bool done = false;
         for (char argType: argTypes) {
             Argument arg;
-            switch (argType) {
-                case 'd': {
-                    char *end;
-                    double value = std::strtod(command.c_str(), &end);
-                    if (end == command.c_str()) {
-                        response = PSTR("Error: Invalid double argument.");
-                        return false;
+
+            if (done) {
+                arg = Argument();
+            }else {
+                switch (argType) {
+                    case 'd': {
+                        char *end;
+                        double value = std::strtod(command.c_str(), &end);
+                        if (end == command.c_str()) {
+                            response = PSTR("Error: Invalid double argument.");
+                            if (optional) {
+                                done = true;
+                                break;
+                            }
+                            return false;
+                        }
+                        arg = Argument(value);
+                        command.erase(0, end - command.c_str());
+                        break;
                     }
-                    arg = Argument(value);
-                    command.erase(0, end - command.c_str());
-                    break;
+                    case 'u': {
+                        uint64_t value;
+                        size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0,
+                                                              std::numeric_limits<uint64_t>::max());
+                        if (bytesRead == 0) {
+                            response = PSTR("Error: Invalid unsigned integer argument.");
+                            if (optional) {
+                                done = true;
+                                break;
+                            }
+                            return false;
+                        }
+                        arg = Argument(value);
+                        command.erase(0, bytesRead);
+                        if (command.size() > 0) {
+                            command.erase(0, 1);
+                        }
+                        break;
+                    }
+                    case 'i': {
+                        int64_t value;
+                        size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(),
+                                                    std::numeric_limits<int64_t>::max());
+                        if (bytesRead == 0) {
+                            response = PSTR("Error: Invalid integer argument.");
+                            if (optional) {
+                                done = true;
+                                break;
+                            }
+                            return false;
+                        }
+                        arg = Argument(value);
+                        command.erase(0, bytesRead);
+                        if (command.size() > 0) {
+                            command.erase(0, 1);
+                        }
+                        break;
+                    }
+                    case 's': {
+                        std::string value;
+                        size_t bytesRead = parseString(command.c_str(), value);
+                        if (bytesRead == 0) {
+                            response = PSTR("Error: Invalid string argument.");
+                            if (optional) {
+                                done = true;
+                                break;
+                            }
+                            return false;
+                        }
+                        arg = Argument(value);
+                        command.erase(0, bytesRead);
+                        break;
+                    }
+                    case 'o': {
+                        optional = true;
+                    }
                 }
-                case 'u': {
-                    uint64_t value;
-                    size_t bytesRead = strToInt<uint64_t>(command.c_str(), &value, 0,
-                                                          std::numeric_limits<uint64_t>::max());
-                    if (bytesRead == 0) {
-                        response = PSTR("Error: Invalid unsigned integer argument.");
-                        return false;
-                    }
-                    arg = Argument(value);
-                    command.erase(0, bytesRead);
-                    if (command.size() > 0) {
-                        command.erase(0, 1);
-                    }
-                    break;
-                }
-                case 'i': {
-                    int64_t value;
-                    size_t bytesRead = strToInt(command.c_str(), &value, std::numeric_limits<int64_t>::min(),
-                                                std::numeric_limits<int64_t>::max());
-                    if (bytesRead == 0) {
-                        response = PSTR("Error: Invalid integer argument.");
-                        return false;
-                    }
-                    arg = Argument(value);
-                    command.erase(0, bytesRead);
-                    if (command.size() > 0) {
-                        command.erase(0, 1);
-                    }
-                    break;
-                }
-                case 's': {
-                    std::string value;
-                    size_t bytesRead = parseString(command.c_str(), value);
-                    if (bytesRead == 0) {
-                        response = PSTR("Error: Invalid string argument.");
-                        return false;
-                    }
-                    arg = Argument(value);
-                    command.erase(0, bytesRead);
-                    break;
+                if (done) {
+                    arg = Argument();
                 }
             }
-            commandArgs.push_back(arg);
+            if (argType != 'o') {
+                commandArgs.push_back(arg);
+            }
         }
         command.erase(0, command.find_first_not_of(" \t")); // Trim whitespace
         if (!command.empty()) {
