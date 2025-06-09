@@ -62,6 +62,17 @@ constexpr static MathOP stringToMathOP(const std::string& str) {
     return MathOPCount;
 }
 
+template <size_t N1, size_t N2, size_t N3>
+constexpr auto make_command_name(const char (&prefix)[N1], const char (&name)[N2], const char (&subname)[N3]) {
+    std::array<char, N1 + N2 + N3 - 2> out = {};
+    size_t i = 0;
+    for (size_t j = 0; j < N1 - 1; ++j) out[i++] = prefix[j];
+    for (size_t j = 0; j < N2 - 1; ++j) out[i++] = name[j];
+    for (size_t j = 0; j < N3 - 1; ++j) out[i++] = subname[j];
+    out[i] = '\0';
+    return out;
+}
+
 class DoubleRef {
 public:
     virtual ~DoubleRef() = default;
@@ -160,6 +171,23 @@ public:
         int64_t asInt64() const { return std::get<int64_t>(value); }
 
         const std::string &asString() const { return std::get<std::string>(value); }
+
+        double asDoubleOr(double d) const {
+            return present ? std::get<double>(value) : d;
+        }
+
+        uint64_t asUInt64Or(uint64_t u) const {
+            return present ? std::get<uint64_t>(value) : u;
+        }
+
+        int64_t asInt64Or(int64_t i) const {
+            return present ? std::get<int64_t>(value) : i;
+        }
+
+        const std::string &asStringOr(const std::string &s) const {
+            return present ? std::get<std::string>(value) : s;
+        }
+
     };
 
     struct BaseCommand {
@@ -228,6 +256,35 @@ public:
         }
         mathCommandDefinition.emplace_back(name, value, callback, description);
         return true;
+    }
+    template<typename Container, typename T>
+    bool callRemoveOn(Container c, T a) {
+        auto id = std::find_if(c.begin(), c.end(), a);
+        if (id != c.end()) {
+            c.erase(id);
+            return true;
+        }
+        return false;
+    }
+
+    bool removeCommand(std::string name) {
+        for (auto &c : name) {
+            c = tolower(c);
+        }
+        return callRemoveOn(commandDefinitions, [name](auto a){return a.name == name;});
+    }
+
+    bool removeMathCommand(std::string name) {
+        for (auto &c : name) {
+            c = tolower(c);
+        }
+        return callRemoveOn(mathCommandDefinition, [name](auto a){return a.name == name;});
+    }
+
+    bool removeAllCommands(std::string name) {
+        bool a = removeMathCommand(name);
+        a |= removeCommand(name);
+        return a;
     }
 
 
