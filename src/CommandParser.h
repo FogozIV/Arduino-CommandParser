@@ -192,8 +192,8 @@ public:
 
     struct BaseCommand {
         std::string name;
-        const char* description;
-        BaseCommand(const std::string &name, const char* description) : name(name), description(description) {}
+        std::string description;
+        BaseCommand(const std::string &name, const std::string& description) : name(name), description(description) {}
     };
 
     struct  Command : public BaseCommand {
@@ -201,7 +201,7 @@ public:
         std::function<std::string(std::vector<Argument>, Stream& stream)> callback;
 
         Command(const std::string &name, const std::string &argTypes,
-                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const char* description = "")
+                std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const std::string& description = "")
                 : BaseCommand(name, description), argTypes(argTypes), callback(callback) {}
     };
 
@@ -211,7 +211,7 @@ public:
         std::function<std::string( Stream& stream, double value, MathOP op)> callback;
         template<typename T>
         MathCommand(const std::string &name, T& value,
-                std::function<std::string( Stream& stream, double value, MathOP op)> callback, const char* description)
+                std::function<std::string( Stream& stream, double value, MathOP op)> callback, const std::string& description)
                     :BaseCommand(name, description), value(std::make_shared<DoubleRefImpl<T>>(value)),   callback(callback){}
     };
 
@@ -238,7 +238,7 @@ private:
 
 public:
     bool registerCommand(const std::string &name, const std::string &argTypes,
-                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, const char* description = "") {
+                         std::function<std::string(std::vector<Argument>, Stream& stream)> callback, std::string description = "") {
         for (char type: argTypes) {
             if (type != 'd' && type != 'u' && type != 'i' && type != 's' && type!= 'o') return false;
         }
@@ -250,7 +250,7 @@ public:
         return true;
     }
     template<typename T>
-    bool registerMathCommand(std::string name, T& value, std::function<std::string(Stream& stream, double value, MathOP op)> callback, const char* description = "") {
+    bool registerMathCommand(std::string name, T& value, std::function<std::string(Stream& stream, double value, MathOP op)> callback, std::string description = "") {
         for (auto &c : name) {
             c = tolower(c);
         }
