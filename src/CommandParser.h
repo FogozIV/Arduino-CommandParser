@@ -258,7 +258,7 @@ public:
         return true;
     }
     template<typename Container, typename T>
-    bool callRemoveOn(Container c, T a) {
+    bool callRemoveOn(Container& c, T a) {
         auto id = std::find_if(c.begin(), c.end(), a);
         if (id != c.end()) {
             c.erase(id);
@@ -278,13 +278,16 @@ public:
         for (auto &c : name) {
             c = tolower(c);
         }
-        return callRemoveOn(mathCommandDefinition, [name](auto a){return a.name == name;});
+        return callRemoveOn(mathCommandDefinition, [name](auto a){
+            return a.name == name;
+        });
     }
 
     bool removeAllCommands(std::string name) {
         bool a = removeMathCommand(name);
-        a |= removeCommand(name);
-        return a;
+        bool b = removeCommand(name);
+
+        return a | b;
     }
 
 
