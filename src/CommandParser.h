@@ -156,6 +156,18 @@ public:
             return present;
         }
 
+        operator double() const{
+            return asDouble();
+        }
+
+        operator uint64_t() const{
+            return asUInt64();
+        }
+
+        operator int64_t() const{
+            return asInt64();
+        }
+
         Argument(double d) : value(d) {}
 
         Argument(uint64_t u) : value(u) {}
