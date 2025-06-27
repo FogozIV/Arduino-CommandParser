@@ -563,12 +563,15 @@ inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
         stream.print(str.c_str());
         stream.print("\r");
     }else{
-        stream.println();
+        stream.print("\r");
+        std::string str(40, ' ');
+        stream.print(str.c_str());
+        stream.print("\r");
+        //stream.println();
     }
 
 }
 
-//source chatgpt
 inline std::string longestCommonPrefix(const std::vector<std::string> &strs) {
     if (strs.empty()) return "";
 
@@ -590,15 +593,6 @@ inline std::string longestCommonPrefix(const std::vector<std::string> &strs) {
 }
 
 
-inline void setCommand(std::string& cmd, const std::string &a, Stream& stream, const TerminalIdentifier& identifier) {
-    if (a != "") {
-        clearline(stream, identifier);
-        cmd = a;
-        stream.print(a.c_str());
-    }
-}
-
-
 
 class CommandLineHandler {
     std::string cmd;
@@ -608,14 +602,36 @@ class CommandLineHandler {
     TerminalIdentifier id;
     CommandParser& parser;
     Stream& stream;
+    size_t cursor = 0;
 
 public:
+    void setCommand(const std::string& a){
+        if (a != "") {
+            clearline(stream, id);
+            cmd = a;
+            cursor = cmd.size();
+            stream.print(a.c_str());
+        }
+    }
+
     CommandLineHandler(CommandParser& parser, Stream& stream): parser(parser), stream(stream) {
         stateMachine.set(UP_LAST_CHAR, [&]{
-            setCommand(cmd, array.go_up(), stream, id);
+            setCommand(array.go_up());
         });
         stateMachine.set(DOWN_LAST_CHAR, [&]{
-            setCommand(cmd, array.go_down(), stream, id);
+            setCommand(array.go_down());
+        });
+        stateMachine.set(LEFT_LAST_CHAR, [&]{
+            if (cursor > 0) {
+                stream.write('\b');  // move cursor left
+                cursor--;
+            }
+        });
+        stateMachine.set(RIGHT_LAST_CHAR, [&]{
+            if (cursor < cmd.length()) {
+                stream.write(cmd[cursor]);  // reprint character under cursor
+                cursor++;
+            }
         });
 
     }
@@ -637,19 +653,23 @@ public:
                 }
             }
             if (c == 8) {
-                if (!cmd.empty()) {
-                    cmd.pop_back();
+                if (!cmd.empty() && cursor > 0) {
+                    cmd.erase(cmd.begin() + cursor - 1);
+                    cursor--;
                     clearline(stream, id);
                     stream.print(cmd.c_str());
+                    for (size_t i = cmd.size(); i > cursor; --i)
+                        stream.write('\b');
                 }
             } else if (c == 9) {
                 auto [descriptions, commandNames]= parser.tab_complete(cmd);
                 if (commandNames.empty()) {
-
                 } else {
                     if (commandNames.size() == 1) {
                         clearline(stream, id);
+                        stream.print((commandNames.front() + " : " + descriptions.front() + "\n").c_str());
                         cmd = commandNames.front();
+                        cursor = cmd.size();
                         stream.print(cmd.c_str());
                     } else {
                         stream.println();
@@ -657,6 +677,7 @@ public:
                             stream.println((commandNames[i] + ": " + (descriptions[i].empty() ? "No description found" : descriptions[i])).c_str());
                         }
                         cmd = longestCommonPrefix(commandNames);
+                        cursor = cmd.size();
                         stream.print(cmd.c_str());
                     }
                 }
@@ -679,8 +700,18 @@ public:
                     id.identified = true;
                     id.identifying = false;
                 }
-                cmd += c;
-                stream.write(c);
+                if (cursor == cmd.size()) {
+                    cmd += c;
+                    stream.write(c);
+                } else {
+                    cmd.insert(cmd.begin() + cursor, c);
+                    clearline(stream, id);
+                    stream.print(cmd.c_str());
+                    // Move cursor back to correct position
+                    for (size_t i = cmd.size(); i > cursor + 1; --i)
+                        stream.write('\b');
+                }
+                cursor++;
             }
 
 
@@ -697,6 +728,7 @@ public:
                 parser.processCommand(cmd, response, stream);
                 array.add(cmd);
                 cmd = "";
+                cursor = 0;
                 if (!response.empty() && response != "") {
                     stream.println(response.c_str());
                 }
