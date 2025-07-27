@@ -356,18 +356,22 @@ public:
         for (auto&c : command) {
             c = tolower(c);
         }
+        std::string caseCommand = commandStr;
         command.erase(command.find_last_not_of(" \n\r\t") + 1);
         command.erase(0, command.find_first_of(PSTR("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRTSUVWXYZ")));
         const auto empty_char_pos = command.find_first_of(' ');
         std::string name = command.substr(0, empty_char_pos);
         if (empty_char_pos == std::string::npos) {
             command.clear();
+            caseCommand.clear();
         }else {
             command.erase(0, empty_char_pos + 1);
+            caseCommand.erase(0, empty_char_pos + 1);
         }
         auto pos = command.find_first_not_of(" \n\r\t");
         if (pos != 0 && pos != std::string::npos) {
             command.erase(0, pos);
+            caseCommand.erase(0, pos);
         }
 
         auto it = std::find_if(commandDefinitions.begin(), commandDefinitions.end(),
@@ -381,7 +385,9 @@ public:
                 response = PSTR("Error: Unknown command.");
                 return false;
             }
-            command.erase(command.find_last_not_of(" \n\r\t") + 1);
+            auto index = command.find_last_not_of(" \n\r\t") + 1;
+            command.erase(index);
+            caseCommand.erase(index);
             if (command.empty()) {
                 response = it_math->callback(stream, (it_math->value)->get(), MathOP::EMPTY);
                 return true;
@@ -474,6 +480,7 @@ public:
                         }
                         arg = Argument(value);
                         command.erase(0, end - command.c_str());
+                        caseCommand.erase(0, end - command.c_str());
                         break;
                     }
                     case 'u': {
@@ -490,6 +497,7 @@ public:
                         }
                         arg = Argument(value);
                         command.erase(0, bytesRead);
+                        caseCommand.erase(0, bytesRead);
                         if (command.size() > 0) {
                             command.erase(0, 1);
                         }
@@ -509,14 +517,16 @@ public:
                         }
                         arg = Argument(value);
                         command.erase(0, bytesRead);
+                        caseCommand.erase(0, bytesRead);
                         if (command.size() > 0) {
                             command.erase(0, 1);
+                            caseCommand.erase(0, 1);
                         }
                         break;
                     }
                     case 's': {
                         std::string value;
-                        size_t bytesRead = parseString(command.c_str(), value);
+                        size_t bytesRead = parseString(caseCommand.c_str(), value);
                         if (bytesRead == 0) {
                             response = PSTR("Error: Invalid string argument.");
                             if (optional) {
@@ -527,6 +537,7 @@ public:
                         }
                         arg = Argument(value);
                         command.erase(0, bytesRead);
+                        caseCommand.erase(0, bytesRead);
                         break;
                     }
                     case 'o': {
@@ -541,7 +552,9 @@ public:
                 commandArgs.push_back(arg);
             }
         }
-        command.erase(0, command.find_first_not_of(" \t")); // Trim whitespace
+        auto t_index = command.find_first_not_of(" \t");
+        command.erase(0, t_index); // Trim whitespace
+        caseCommand.erase(0, t_index);
         if (!command.empty()) {
             response = PSTR("Error: Too many arguments provided.");
             return false;
@@ -662,6 +675,8 @@ public:
                         stream.write('\b');
                 }
             } else if (c == 9) {
+                auto index = cmd.find_first_not_of(" \n\r\t");
+                cmd = cmd.erase(0, index);
                 auto [descriptions, commandNames]= parser.tab_complete(cmd);
                 if (commandNames.empty()) {
                 } else {
