@@ -572,12 +572,12 @@ public:
 inline void clearline(Stream& stream, const TerminalIdentifier& identifier) {
     if(identifier.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN || identifier.type == TERMINAL_END_LINE_WITH_LINE_FEED){
         stream.print("\r");
-        std::string str(40, ' ');
+        std::string str(80, ' ');
         stream.print(str.c_str());
         stream.print("\r");
     }else{
         stream.print("\r");
-        std::string str(40, ' ');
+        std::string str(80, ' ');
         stream.print(str.c_str());
         stream.print("\r");
         //stream.println();
@@ -716,26 +716,35 @@ public:
                     id.identifying = false;
                 }
                 if (cursor == cmd.size()) {
-                    cmd += c;
-                    stream.write(c);
+                    if (std::string(1, c).find_first_of("\t\r\n") == std::string::npos) {
+                        cmd += c;
+                        stream.write(c);
+                        cursor++;
+                    }
                 } else {
-                    cmd.insert(cmd.begin() + cursor, c);
-                    clearline(stream, id);
-                    stream.print(cmd.c_str());
-                    // Move cursor back to correct position
-                    for (size_t i = cmd.size(); i > cursor + 1; --i)
-                        stream.write('\b');
+                    if (std::string(1, c).find_first_of("\t\r\n") == std::string::npos) {
+                        cmd.insert(cmd.begin() + cursor, c);
+                        clearline(stream, id);
+                        stream.print(cmd.c_str());
+                        // Move cursor back to correct position
+                        for (size_t i = cmd.size(); i > cursor + 1; --i)
+                            stream.write('\b');
+
+                        cursor++;
+
+                    }
                 }
-                cursor++;
             }
 
 
             if ((c == '\r' && !id.identified) || (c == '\r' && id.type == TERMINAL_END_LINE_WITH_CARRIAGE_RETURN) || (c== '\n' && (id.type == TERMINAL_END_LINE_WITH_LINE_FEED || id.type == TERMINAL_END_LINE_WITH_BOTH))) {
-                if(c=='\r'){
-                    stream.println();
-                }
-                if(id.identified && id.type == TERMINAL_END_LINE_WITH_LINE_FEED){
-                    stream.write('\r');
+                if((c=='\r' && TERMINAL_END_LINE_WITH_CARRIAGE_RETURN) || (c=='\n' && TERMINAL_END_LINE_WITH_LINE_FEED)) {
+                    clearline(stream, id);
+                    stream.print(cmd.c_str());
+                    cursor = cmd.size();
+                    if (cmd != "") {
+                        stream.println();
+                    }
                 }
                 if(!id.identified){
                     id.identifying = true;
