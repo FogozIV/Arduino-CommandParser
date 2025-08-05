@@ -46,5 +46,9 @@ public:
         return strs[lookingIndex];
     }
 
+    void goto_last() {
+        lookingIndex = index;
+    }
+
 };
 #endif //PAMITEENSY_ROUNDARRAY_H

@@ -751,6 +751,7 @@ public:
                 }
                 parser.processCommand(cmd, response, stream);
                 array.add(cmd);
+                array.goto_last();
                 cmd = "";
                 cursor = 0;
                 if (!response.empty() && response != "") {
