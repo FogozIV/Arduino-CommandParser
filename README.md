@@ -1,3 +1,6 @@
+**This README is not up to date with the modifications made from the original repository**
+**My goals where to go toward dynamic allocation to be able to add, remove, change command on demand and allow for lambda function usage and so on**
+This **should not** be used on a typical Arduino board it requires WAYYY to much RAM memory to work. But it is kinda cool for the teensy 4.1
 CommandParser
 =============
 
