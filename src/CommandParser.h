@@ -54,7 +54,7 @@ inline static std::string mathOPToString(MathOP op) {
     return mathOP_names[static_cast<int>(op)];
 }
 
-constexpr static MathOP stringToMathOP(const std::string& str) {
+static MathOP stringToMathOP(const std::string& str) {
     for (int i = 0; i < MathOPCount; ++i) {
         if (str == mathOP_names[i])
             return static_cast<MathOP>(i);
@@ -63,7 +63,7 @@ constexpr static MathOP stringToMathOP(const std::string& str) {
 }
 
 template <size_t N1, size_t N2, size_t N3>
-constexpr auto make_command_name(const char (&prefix)[N1], const char (&name)[N2], const char (&subname)[N3]) {
+auto make_command_name(const char (&prefix)[N1], const char (&name)[N2], const char (&subname)[N3]) {
     std::array<char, N1 + N2 + N3 - 2> out = {};
     size_t i = 0;
     for (size_t j = 0; j < N1 - 1; ++j) out[i++] = prefix[j];
